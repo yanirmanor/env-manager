@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #3B82F6;
+  --color-primary-light: #60A5FA;
+  --color-app-bg: #0F1115;
+  --color-app-sidebar: #1A1D23;
+  --color-app-card: #14171C;
+  --color-app-border: #2D333B;
+  --color-app-success: #10B981;
+  --color-app-warning: #F59E0B;
+  --color-app-danger: #EF4444;
+  --color-app-local: #10B981;
+  --color-app-remote: #F97316;
+  --color-light-base: #f8f6f6;
+  --color-light-surface: #ffffff;
+  --color-light-card: #ffffff;
+  --color-light-border: #e5e1e0;
+}
+
+:root {
+  font-family: 'Public Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #1A1D23;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #333;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Env row hover */
+.env-row:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
