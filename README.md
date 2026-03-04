@@ -40,8 +40,7 @@ A native desktop tool to manage `.env` files across projects — scan, edit, dif
 ### Homebrew (macOS)
 
 ```sh
-brew tap yanirmanor/tap
-brew install --cask env-manager
+brew install --cask yanirmanor/tap/env-manager
 ```
 
 ### GitHub Releases
