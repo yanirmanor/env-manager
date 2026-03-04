@@ -27,8 +27,7 @@ Thumbs.db
 # Generated icon source
 app-icon.png
 
-# Bun
-bun.lock
+# Bun - keep bun.lock committed for reproducible CI builds
 
 # User service map (generated at runtime)
 data/service-map.json
