@@ -1,21 +1,22 @@
-import { useState, useCallback, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useShallow } from "zustand/react/shallow";
 import { ProjectList } from "./components/ProjectList";
 import { EnvEditor } from "./components/EnvEditor";
 import { ServiceStatus } from "./components/ServiceStatus";
 import { DiffView } from "./components/DiffView";
-import { useProjects } from "./hooks/useProjects";
-import { useEnvEntries } from "./hooks/useEnvEntries";
-import { usePorts } from "./hooks/usePorts";
-import { useTheme } from "./hooks/useTheme";
-import { useDefaultBaseline } from "./hooks/useDefaultBaseline";
-import { useServiceMap } from "./hooks/useServiceMap";
-import type { Project } from "./types";
+import { ToastContainer } from "./components/ToastContainer";
+import { useStore } from "./store";
+import type { PendingChange } from "./types";
 
 function App() {
-  const { folders, projects, loading, addFolder, removeFolder, refresh } =
-    useProjects();
   const {
+    folders,
+    projects,
+    projectsLoading,
+    refreshProjects,
+    addFolder,
+    removeFolder,
     entries,
     pendingChanges,
     loadEntries,
@@ -23,83 +24,154 @@ function App() {
     saveChanges,
     discardChanges,
     handleToggleUrl,
-  } = useEnvEntries();
-  const { ports, refresh: refreshPorts } = usePorts();
-  const { theme, toggle: toggleTheme } = useTheme();
-  const { getDefault, setDefault, clearDefault, hasDefault } =
-    useDefaultBaseline();
-  const { serviceMap, refresh: refreshServiceMap } = useServiceMap();
+    ports,
+    refreshPorts,
+    startPortPolling,
+    theme,
+    toggleTheme,
+    baselines,
+    setBaseline,
+    getBaseline,
+    serviceMap,
+    refreshServiceMap,
+    toasts,
+    showToast,
+    dismissToast,
+    selectedProject,
+    selectedFile,
+    showDiff,
+    search,
+    restoredDefault,
+    selectFile,
+    setShowDiff,
+    setSearch,
+    setRestoredDefault,
+  } = useStore(
+    useShallow((s) => ({
+      folders: s.folders,
+      projects: s.projects,
+      projectsLoading: s.projectsLoading,
+      refreshProjects: s.refreshProjects,
+      addFolder: s.addFolder,
+      removeFolder: s.removeFolder,
+      entries: s.entries,
+      pendingChanges: s.pendingChanges,
+      loadEntries: s.loadEntries,
+      stageChange: s.stageChange,
+      saveChanges: s.saveChanges,
+      discardChanges: s.discardChanges,
+      handleToggleUrl: s.handleToggleUrl,
+      ports: s.ports,
+      refreshPorts: s.refreshPorts,
+      startPortPolling: s.startPortPolling,
+      theme: s.theme,
+      toggleTheme: s.toggleTheme,
+      baselines: s.baselines,
+      setBaseline: s.setBaseline,
+      getBaseline: s.getBaseline,
 
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [showDiff, setShowDiff] = useState(false);
-  const [search, setSearch] = useState("");
-
-  const handleSelectFile = useCallback(
-    (project: Project, file: string) => {
-      setSelectedProject(project);
-      setSelectedFile(file);
-      loadEntries(project.path);
-      setShowDiff(false);
-    },
-    [loadEntries],
+      serviceMap: s.serviceMap,
+      refreshServiceMap: s.refreshServiceMap,
+      toasts: s.toasts,
+      showToast: s.showToast,
+      dismissToast: s.dismissToast,
+      selectedProject: s.selectedProject,
+      selectedFile: s.selectedFile,
+      showDiff: s.showDiff,
+      search: s.search,
+      restoredDefault: s.restoredDefault,
+      selectFile: s.selectFile,
+      setShowDiff: s.setShowDiff,
+      setSearch: s.setSearch,
+      setRestoredDefault: s.setRestoredDefault,
+    })),
   );
 
-  const handleAddFolder = useCallback(async () => {
+  useEffect(() => {
+    refreshProjects();
+    refreshServiceMap();
+    startPortPolling();
+    return () => useStore.getState().stopPortPolling();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAddFolder = async () => {
     const selected = await open({ directory: true, multiple: false });
     if (selected) {
       await addFolder(selected as string);
     }
-  }, [addFolder]);
+  };
 
-  const handleSave = useCallback(async () => {
-    await saveChanges();
-    if (selectedProject) {
-      loadEntries(selectedProject.path);
+  const handleSave = async () => {
+    try {
+      await saveChanges();
+      showToast("Changes saved successfully");
+    } catch (err) {
+      console.error("Save failed:", err);
+      showToast("Failed to save changes", "error");
     }
-  }, [saveChanges, selectedProject, loadEntries]);
+    if (selectedProject) {
+      await loadEntries(selectedProject.path);
+    }
+  };
 
-  const handleDiscard = useCallback(async () => {
+  const handleDiscard = async () => {
     if (selectedProject) {
       await discardChanges(selectedProject.path);
+      showToast("Changes discarded");
     }
-  }, [selectedProject, discardChanges]);
+  };
 
-  const handleSetDefault = useCallback(() => {
+  const handleSetDefault = () => {
     if (selectedProject) {
-      setDefault(selectedProject.path, entries);
+      setBaseline(selectedProject.path, entries);
+      setRestoredDefault(false);
+      showToast("Default baseline saved");
     }
-  }, [selectedProject, entries, setDefault]);
+  };
 
-  const handleClearDefault = useCallback(() => {
-    if (selectedProject) {
-      clearDefault(selectedProject.path);
+  const handleRestoreDefault = async () => {
+    if (!selectedProject) return;
+    const baseline = getBaseline(selectedProject.path);
+    if (!baseline) return;
+    for (const [changeKey, value] of baseline) {
+      const [file, key] = changeKey.split("::");
+      stageChange(file, key, value);
     }
-  }, [selectedProject, clearDefault]);
+    try {
+      await saveChanges();
+      setRestoredDefault(true);
+      showToast("Restored to default baseline");
+    } catch (err) {
+      console.error("Restore failed:", err);
+      showToast("Failed to restore default", "error");
+    }
+    await loadEntries(selectedProject.path);
+  };
 
   // Compute diff data: compare against default baseline or pending changes
   const diffData = useMemo(() => {
     if (!selectedProject) return pendingChanges;
 
-    const baseline = getDefault(selectedProject.path);
+    const baseline = getBaseline(selectedProject.path);
     if (!baseline) return pendingChanges;
 
     // Compare current entries against stored default
-    const diff = new Map<string, { original: string; current: string }>();
+    const diff: Record<string, PendingChange> = {};
     for (const entry of entries) {
       if (entry.is_comment) continue;
       const cellId = `${entry.file}::${entry.key}`;
       const defaultValue = baseline.get(cellId);
       if (defaultValue !== undefined && defaultValue !== entry.value) {
-        diff.set(cellId, { original: defaultValue, current: entry.value });
+        diff[cellId] = { original: defaultValue, current: entry.value };
       }
     }
     return diff;
-  }, [selectedProject, entries, pendingChanges, getDefault]);
+  }, [selectedProject, entries, pendingChanges, getBaseline, baselines]);
 
+  const pendingCount = Object.keys(pendingChanges).length;
   const projectHasDefault =
-    selectedProject != null && hasDefault(selectedProject.path);
-  const hasDiffableChanges = diffData.size > 0;
+    selectedProject != null && selectedProject.path in baselines;
+  const hasDiffableChanges = Object.keys(diffData).length > 0;
 
   // Compute running services for toggle dropdown: all running ports
   const folderServices = useMemo(() => {
@@ -116,7 +188,11 @@ function App() {
         const port = parseInt(portMatch[1], 10);
         if (!ports.some((p) => p.port === port)) continue;
 
-        services.push({ name: mapping.name, port, localUrl: mapping.local_url });
+        services.push({
+          name: mapping.name,
+          port,
+          localUrl: mapping.local_url,
+        });
         seen.add(port);
       }
     }
@@ -158,7 +234,7 @@ function App() {
           <div className="h-6 w-[1px] bg-light-border dark:bg-app-border mx-2" />
           <div className="flex space-x-1">
             <button
-              onClick={refresh}
+              onClick={refreshProjects}
               className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white transition-colors"
             >
               Scan
@@ -170,8 +246,18 @@ function App() {
         <div className="flex-1 max-w-xl mx-8">
           <div className="relative">
             <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 dark:text-gray-500">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                />
               </svg>
             </span>
             <input
@@ -206,8 +292,18 @@ function App() {
             onClick={handleAddFolder}
             className="flex items-center space-x-1 px-3 py-1.5 rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-medium transition-colors"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M12 4v16m8-8H4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+              />
             </svg>
             <span>Add Folder</span>
           </button>
@@ -215,15 +311,37 @@ function App() {
           <button
             onClick={toggleTheme}
             className="p-2 rounded border border-light-border dark:border-app-border text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={
+              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+            }
           >
             {theme === "dark" ? (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                />
               </svg>
             ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                />
               </svg>
             )}
           </button>
@@ -237,9 +355,9 @@ function App() {
           <div className="flex-1 overflow-y-auto p-4">
             <ProjectList
               projects={filteredProjects}
-              loading={loading}
+              loading={projectsLoading}
               selectedFile={selectedFile}
-              onSelectFile={handleSelectFile}
+              onSelectFile={selectFile}
             />
             <ServiceStatus
               ports={ports}
@@ -269,6 +387,15 @@ function App() {
                       ? selectedFile.split("/").pop()
                       : "All files"}
                   </span>
+                  {projectHasDefault ? (
+                    <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                      Default Set
+                    </span>
+                  ) : (
+                    <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500">
+                      No Default
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -290,19 +417,19 @@ function App() {
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={handleSave}
-                    disabled={pendingChanges.size === 0}
+                    disabled={pendingCount === 0}
                     className="px-6 py-2 rounded bg-primary hover:bg-blue-500 text-white text-sm font-semibold transition-colors shadow-lg shadow-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Save Changes
-                    {pendingChanges.size > 0 && (
+                    {pendingCount > 0 && (
                       <span className="ml-2 bg-white/20 rounded-full px-2 py-0.5 text-xs">
-                        {pendingChanges.size}
+                        {pendingCount}
                       </span>
                     )}
                   </button>
                   <button
                     onClick={handleDiscard}
-                    disabled={pendingChanges.size === 0}
+                    disabled={pendingCount === 0}
                     className="px-6 py-2 rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Discard
@@ -314,12 +441,12 @@ function App() {
                   >
                     Set as Default
                   </button>
-                  {projectHasDefault && (
+                  {projectHasDefault && !restoredDefault && (
                     <button
-                      onClick={handleClearDefault}
-                      className="text-xs text-gray-500 hover:text-app-danger transition-colors underline"
+                      onClick={handleRestoreDefault}
+                      className="px-4 py-2 rounded border border-light-border dark:border-app-border hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm font-medium transition-colors"
                     >
-                      Clear Default
+                      Restore to Default
                     </button>
                   )}
                 </div>
@@ -354,11 +481,17 @@ function App() {
           baselineLabel={projectHasDefault ? "default" : "disk"}
           onClose={() => setShowDiff(false)}
           onApply={async () => {
-            await handleSave();
+            if (projectHasDefault) {
+              await handleRestoreDefault();
+            } else {
+              await handleSave();
+            }
             setShowDiff(false);
           }}
         />
       )}
+
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

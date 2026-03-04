@@ -9,7 +9,11 @@ use std::path::Path;
 #[tauri::command]
 pub fn update_entry(file: &str, key: &str, value: &str) -> Result<(), String> {
     backup::create_backup(file)?;
-    write_entry(file, key, value)
+    if file.ends_with("nodemon.json") {
+        write_nodemon_entry(file, key, value)
+    } else {
+        write_entry(file, key, value)
+    }
 }
 
 fn write_entry(file: &str, key: &str, value: &str) -> Result<(), String> {
@@ -40,6 +44,30 @@ fn write_entry(file: &str, key: &str, value: &str) -> Result<(), String> {
     }
 
     atomic_write(file, &new_lines.join("\n"))
+}
+
+fn write_nodemon_entry(file: &str, key: &str, value: &str) -> Result<(), String> {
+    let content = fs::read_to_string(file).map_err(|e| e.to_string())?;
+    let mut json: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    let env_obj = json
+        .get_mut("env")
+        .and_then(|v| v.as_object_mut())
+        .ok_or_else(|| format!("No 'env' object in {}", file))?;
+
+    if !env_obj.contains_key(key) {
+        return Err(format!("Key '{}' not found in {}", key, file));
+    }
+
+    // Write the user's value as-is, using serde to parse it as a JSON literal first
+    // so "true" -> bool true, "123" -> number 123, etc. Falls back to string.
+    let json_value: serde_json::Value = serde_json::from_str(value)
+        .unwrap_or_else(|_| serde_json::Value::String(value.to_string()));
+
+    env_obj.insert(key.to_string(), json_value);
+
+    let new_content = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
+    atomic_write(file, &new_content)
 }
 
 fn atomic_write(file: &str, content: &str) -> Result<(), String> {

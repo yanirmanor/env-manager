@@ -77,3 +77,14 @@ export interface DiffLine {
   new_value: string;
   line_number: number;
 }
+
+export interface PendingChange {
+  original: string;
+  current: string;
+}
+
+export interface Toast {
+  id: number;
+  message: string;
+  type: "success" | "error";
+}

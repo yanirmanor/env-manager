@@ -124,7 +124,7 @@ export function EnvEditor({
               <th className="pb-3 font-semibold w-1/3">Key</th>
               <th className="pb-3 font-semibold w-1/3">Value</th>
               <th className="pb-3 font-semibold w-24">Category</th>
-              <th className="pb-3 font-semibold text-right w-24 px-4">Toggle</th>
+              <th className="pb-3 font-semibold text-right w-24 px-4">Switch</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-light-border dark:divide-app-border">

@@ -1,6 +1,6 @@
 cask "env-manager" do
   version "1.0.0"
-  sha256 "PLACEHOLDER"
+  sha256 "b394da33fe4297d2262bee601e1147a6fb0fffe134e2ade27d1794a4718cf8ad"
 
   url "https://github.com/yanirmanor/env-manager/releases/download/app-v#{version}/Env.Manager_#{version}_universal.dmg"
   name "Env Manager"

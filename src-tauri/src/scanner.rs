@@ -1,4 +1,5 @@
 use crate::parser;
+use crate::service_map;
 use crate::types::{Project, ProjectStatus};
 use std::collections::HashMap;
 use std::path::Path;
@@ -25,6 +26,7 @@ fn is_env_file(name: &str) -> bool {
         || name == ".env.production"
         || name == ".env.staging"
         || name == ".env.test"
+        || name == "nodemon.json"
 }
 
 fn should_skip_dir(name: &str) -> bool {
@@ -86,6 +88,8 @@ pub fn scan_projects(root: &str) -> Vec<Project> {
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| root.to_string());
 
+    let smap = service_map::load_service_map();
+
     let mut projects: Vec<Project> = project_map
         .into_iter()
         .map(|(path, env_files)| {
@@ -94,7 +98,7 @@ pub fn scan_projects(root: &str) -> Vec<Project> {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| path.clone());
 
-            let status = compute_project_status(&env_files);
+            let status = compute_project_status(&env_files, &smap);
 
             Project {
                 name,
@@ -110,13 +114,17 @@ pub fn scan_projects(root: &str) -> Vec<Project> {
     projects
 }
 
-fn compute_project_status(env_files: &[String]) -> ProjectStatus {
+fn compute_project_status(env_files: &[String], smap: &crate::types::ServiceMap) -> ProjectStatus {
     let mut has_local = false;
     let mut has_remote = false;
     let mut has_urls = false;
 
     for file in env_files {
-        let entries = parser::parse_env_file(file);
+        let entries = if file.ends_with("nodemon.json") {
+            parser::parse_nodemon_file_with_map(file, smap)
+        } else {
+            parser::parse_env_file_with_map(file, smap)
+        };
         for entry in &entries {
             if entry.is_url {
                 has_urls = true;

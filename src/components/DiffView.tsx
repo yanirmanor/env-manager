@@ -1,5 +1,7 @@
+import type { PendingChange } from "../types";
+
 interface DiffViewProps {
-  pendingChanges: Map<string, { original: string; current: string }>;
+  pendingChanges: Record<string, PendingChange>;
   baselineLabel?: "default" | "disk";
   onClose: () => void;
   onApply: () => void;
@@ -11,7 +13,9 @@ export function DiffView({
   onClose,
   onApply,
 }: DiffViewProps) {
-  if (pendingChanges.size === 0) {
+  const changeEntries = Object.entries(pendingChanges);
+
+  if (changeEntries.length === 0) {
     return (
       <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-12">
         <div className="bg-light-card dark:bg-app-card rounded-xl border border-light-border dark:border-app-border p-8 text-center shadow-2xl">
@@ -35,15 +39,13 @@ export function DiffView({
       : "Comparing against last loaded state";
 
   // Classify changes
-  const entries = Array.from(pendingChanges.entries()).map(
-    ([changeKey, change]) => {
-      const [file, key] = changeKey.split("::");
-      const fileName = file.split("/").pop() || file;
-      const isAdded = change.original === "";
-      const isRemoved = change.current === "";
-      return { changeKey, file, key, fileName, ...change, isAdded, isRemoved };
-    },
-  );
+  const entries = changeEntries.map(([changeKey, change]) => {
+    const [file, key] = changeKey.split("::");
+    const fileName = file.split("/").pop() || file;
+    const isAdded = change.original === "";
+    const isRemoved = change.current === "";
+    return { changeKey, file, key, fileName, ...change, isAdded, isRemoved };
+  });
 
   return (
     <div

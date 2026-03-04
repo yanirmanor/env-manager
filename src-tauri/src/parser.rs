@@ -1,6 +1,7 @@
 use crate::service_map;
 use crate::types::{EnvEntry, ServiceMap, ValueCategory};
 use crate::url_detector;
+use serde_json;
 use std::fs;
 
 #[tauri::command]
@@ -15,8 +16,10 @@ pub fn get_env_entries(project: &str) -> Vec<EnvEntry> {
     if let Ok(entries) = std::fs::read_dir(project) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with(".env") {
-                let path = entry.path().to_string_lossy().to_string();
+            let path = entry.path().to_string_lossy().to_string();
+            if name == "nodemon.json" {
+                all_entries.extend(parse_nodemon_file_with_map(&path, &smap));
+            } else if name.starts_with(".env") {
                 all_entries.extend(parse_env_file_with_map(&path, &smap));
             }
         }
@@ -29,7 +32,51 @@ pub fn parse_env_file(path: &str) -> Vec<EnvEntry> {
     parse_env_file_with_map(path, &smap)
 }
 
-fn parse_env_file_with_map(path: &str, service_map: &ServiceMap) -> Vec<EnvEntry> {
+pub fn parse_nodemon_file_with_map(path: &str, service_map: &ServiceMap) -> Vec<EnvEntry> {
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    let json: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return vec![],
+    };
+
+    let env_obj = match json.get("env").and_then(|v| v.as_object()) {
+        Some(obj) => obj,
+        None => return vec![],
+    };
+
+    let mut entries = Vec::new();
+    for (key, val) in env_obj {
+        let value = match val {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            _ => val.to_string(),
+        };
+
+        let category = categorize_value(key, &value);
+        let (is_url, url_direction) = url_detector::classify_value(&value, service_map);
+
+        entries.push(EnvEntry {
+            key: key.clone(),
+            value: value.clone(),
+            file: path.to_string(),
+            line_number: 0,
+            category,
+            is_comment: false,
+            raw_line: format!("{}={}", key, value),
+            is_url,
+            url_direction,
+        });
+    }
+
+    entries
+}
+
+pub fn parse_env_file_with_map(path: &str, service_map: &ServiceMap) -> Vec<EnvEntry> {
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return vec![],

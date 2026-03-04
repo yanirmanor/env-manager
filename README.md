@@ -53,6 +53,8 @@ Download the latest release from the [GitHub Releases](https://github.com/yanirm
 | Windows | `.msi` |
 | Linux | `.AppImage` |
 
+> **macOS note:** On first launch, macOS may block the app ("Apple could not verify"). Go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway**.
+
 ## Build from Source
 
 Prerequisites: [Rust](https://rustup.rs/), [Bun](https://bun.sh/), [Tauri CLI](https://v2.tauri.app/start/prerequisites/)
