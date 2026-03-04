@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+          - platform: ubuntu-22.04
+            args: ''
+          - platform: windows-latest
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: 'Env Manager v__VERSION__'
+          releaseBody: 'See the assets below to download and install.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+          tauriScript: bunx tauri
+
+  update-homebrew:
+    needs: release
+    runs-on: macos-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for release assets
+        run: sleep 30
+
+      - name: Download macOS DMG from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "app-v${{ steps.version.outputs.version }}" \
+            --repo yanirmanor/env-manager \
+            --pattern "*.dmg" \
+            --dir .
+
+      - name: Compute SHA256
+        id: sha
+        run: |
+          DMG_FILE=$(ls *.dmg | head -1)
+          SHA=$(shasum -a 256 "$DMG_FILE" | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "DMG file: $DMG_FILE"
+          echo "SHA256: $SHA"
+
+      - name: Clone and update tap repo
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          git clone https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/yanirmanor/homebrew-tap.git
+          cd homebrew-tap
+          mkdir -p Casks
+          cat > Casks/env-manager.rb << 'FORMULA'
+          cask "env-manager" do
+            version "VERSION_PLACEHOLDER"
+            sha256 "SHA_PLACEHOLDER"
+
+            url "https://github.com/yanirmanor/env-manager/releases/download/app-v#{version}/Env.Manager_#{version}_universal.dmg"
+            name "Env Manager"
+            desc "Native desktop tool to manage .env files across projects"
+            homepage "https://github.com/yanirmanor/env-manager"
+
+            app "Env Manager.app"
+
+            zap trash: [
+              "~/Library/Application Support/com.env-manager.app",
+              "~/Library/Caches/com.env-manager.app",
+            ]
+          end
+          FORMULA
+          sed -i '' "s/VERSION_PLACEHOLDER/${{ steps.version.outputs.version }}/g" Casks/env-manager.rb
+          sed -i '' "s/SHA_PLACEHOLDER/${{ steps.sha.outputs.sha256 }}/g" Casks/env-manager.rb
+
+      - name: Commit and push formula update
+        run: |
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/env-manager.rb
+          git commit -m "Update env-manager to ${{ steps.version.outputs.version }}"
+          git push
