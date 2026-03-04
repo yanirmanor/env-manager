@@ -64,14 +64,21 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for release assets
-        run: sleep 30
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: app-v${{ steps.version.outputs.version }}
+        run: |
+          gh release edit "$RELEASE_TAG" \
+            --repo yanirmanor/env-manager \
+            --draft=false
 
       - name: Download macOS DMG from release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: app-v${{ steps.version.outputs.version }}
         run: |
-          gh release download "app-v${{ steps.version.outputs.version }}" \
+          gh release download "$RELEASE_TAG" \
             --repo yanirmanor/env-manager \
             --pattern "*.dmg" \
             --dir .
