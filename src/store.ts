@@ -82,11 +82,11 @@ interface AppState {
   // UI slice
   selectedProject: Project | null;
   selectedFile: string | null;
-  showDiff: boolean;
+  diffMode: "changes" | "default" | null;
   search: string;
   restoredDefault: boolean;
   selectFile: (project: Project, file: string) => Promise<void>;
-  setShowDiff: (show: boolean) => void;
+  setDiffMode: (mode: "changes" | "default" | null) => void;
   setSearch: (search: string) => void;
   setRestoredDefault: (restored: boolean) => void;
 }
@@ -312,7 +312,7 @@ export const useStore = create<AppState>()(
         // ---------- UI ----------
         selectedProject: null,
         selectedFile: null,
-        showDiff: false,
+        diffMode: null,
         search: "",
         restoredDefault: false,
 
@@ -320,15 +320,15 @@ export const useStore = create<AppState>()(
           set((s) => {
             s.selectedProject = project;
             s.selectedFile = file;
-            s.showDiff = false;
+            s.diffMode = null;
             s.restoredDefault = false;
           });
           await get().loadEntries(project.path);
         },
 
-        setShowDiff: (show) => {
+        setDiffMode: (mode) => {
           set((s) => {
-            s.showDiff = show;
+            s.diffMode = mode;
           });
         },
 

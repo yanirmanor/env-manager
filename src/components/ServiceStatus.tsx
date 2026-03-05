@@ -133,7 +133,7 @@ export function ServiceStatus({
 
   if (ports.length === 0) {
     return (
-      <div className="mt-8">
+      <div>
         {header}
         <p className="px-2 text-[12px] text-gray-500">
           {selectedProject
@@ -151,7 +151,7 @@ export function ServiceStatus({
   });
 
   return (
-    <div className="mt-8">
+    <div>
       {header}
       {groupKeys.map((group) => (
         <div key={group} className="mb-3">

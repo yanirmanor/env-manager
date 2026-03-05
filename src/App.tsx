@@ -39,11 +39,11 @@ function App() {
     dismissToast,
     selectedProject,
     selectedFile,
-    showDiff,
+    diffMode,
     search,
     restoredDefault,
     selectFile,
-    setShowDiff,
+    setDiffMode,
     setSearch,
     setRestoredDefault,
   } = useStore(
@@ -77,11 +77,11 @@ function App() {
       dismissToast: s.dismissToast,
       selectedProject: s.selectedProject,
       selectedFile: s.selectedFile,
-      showDiff: s.showDiff,
+      diffMode: s.diffMode,
       search: s.search,
       restoredDefault: s.restoredDefault,
       selectFile: s.selectFile,
-      setShowDiff: s.setShowDiff,
+      setDiffMode: s.setDiffMode,
       setSearch: s.setSearch,
       setRestoredDefault: s.setRestoredDefault,
     })),
@@ -148,14 +148,13 @@ function App() {
     await loadEntries(selectedProject.path);
   };
 
-  // Compute diff data: compare against default baseline or pending changes
-  const diffData = useMemo(() => {
-    if (!selectedProject) return pendingChanges;
+  // Compute diff data comparing current entries against stored default baseline
+  const defaultDiffData = useMemo(() => {
+    if (!selectedProject) return {};
 
     const baseline = getBaseline(selectedProject.path);
-    if (!baseline) return pendingChanges;
+    if (!baseline) return {};
 
-    // Compare current entries against stored default
     const diff: Record<string, PendingChange> = {};
     for (const entry of entries) {
       if (entry.is_comment) continue;
@@ -166,12 +165,13 @@ function App() {
       }
     }
     return diff;
-  }, [selectedProject, entries, pendingChanges, getBaseline, baselines]);
+  }, [selectedProject, entries, getBaseline, baselines]);
 
   const pendingCount = Object.keys(pendingChanges).length;
   const projectHasDefault =
     selectedProject != null && selectedProject.path in baselines;
-  const hasDiffableChanges = Object.keys(diffData).length > 0;
+  const hasPendingChanges = pendingCount > 0;
+  const hasDefaultDiff = Object.keys(defaultDiffData).length > 0;
 
   // Compute running services for toggle dropdown: all running ports
   const folderServices = useMemo(() => {
@@ -352,13 +352,17 @@ function App() {
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
         <aside className="w-64 bg-light-surface dark:bg-app-sidebar border-r border-light-border dark:border-app-border flex flex-col shrink-0">
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* Projects - 3/4 */}
+          <div className="h-3/4 overflow-y-auto p-4 border-b border-light-border dark:border-app-border">
             <ProjectList
               projects={filteredProjects}
               loading={projectsLoading}
               selectedFile={selectedFile}
               onSelectFile={selectFile}
             />
+          </div>
+          {/* Running Services - 1/4 */}
+          <div className="h-1/4 overflow-y-auto p-4">
             <ServiceStatus
               ports={ports}
               serviceMap={serviceMap}
@@ -450,13 +454,23 @@ function App() {
                     </button>
                   )}
                 </div>
-                <button
-                  onClick={() => setShowDiff(true)}
-                  disabled={!hasDiffableChanges}
-                  className="px-8 py-2 rounded border border-primary text-primary hover:bg-primary/10 text-sm font-bold tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Diff Changes
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setDiffMode("changes")}
+                    disabled={!hasPendingChanges}
+                    className="px-6 py-2 rounded border border-primary text-primary hover:bg-primary/10 text-sm font-bold tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Diff Changes
+                  </button>
+                  <button
+                    onClick={() => setDiffMode("default")}
+                    disabled={!projectHasDefault || !hasDefaultDiff}
+                    className="px-6 py-2 rounded border border-green-600 text-green-600 hover:bg-green-600/10 text-sm font-bold tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                    title={!projectHasDefault ? "No default baseline set" : undefined}
+                  >
+                    Compare to Default
+                  </button>
+                </div>
               </footer>
             </>
           ) : (
@@ -475,18 +489,18 @@ function App() {
       </div>
 
       {/* Diff overlay */}
-      {showDiff && (
+      {diffMode && (
         <DiffView
-          pendingChanges={diffData}
-          baselineLabel={projectHasDefault ? "default" : "disk"}
-          onClose={() => setShowDiff(false)}
+          pendingChanges={diffMode === "default" ? defaultDiffData : pendingChanges}
+          baselineLabel={diffMode === "default" ? "default" : "disk"}
+          onClose={() => setDiffMode(null)}
           onApply={async () => {
-            if (projectHasDefault) {
+            if (diffMode === "default") {
               await handleRestoreDefault();
             } else {
               await handleSave();
             }
-            setShowDiff(false);
+            setDiffMode(null);
           }}
         />
       )}

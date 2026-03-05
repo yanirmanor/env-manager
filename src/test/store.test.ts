@@ -367,14 +367,14 @@ describe("Store", () => {
     it("selectFile sets project, file, resets diff/restored flags, and loads entries", async () => {
       mockInvoke.mockResolvedValueOnce(mockEntries);
 
-      useStore.setState({ showDiff: true, restoredDefault: true });
+      useStore.setState({ diffMode: "changes", restoredDefault: true });
 
       useStore.getState().selectFile(mockProject, ".env");
 
       const state = useStore.getState();
       expect(state.selectedProject).toEqual(mockProject);
       expect(state.selectedFile).toBe(".env");
-      expect(state.showDiff).toBe(false);
+      expect(state.diffMode).toBeNull();
       expect(state.restoredDefault).toBe(false);
     });
   });
