@@ -2,6 +2,8 @@
 
 A native desktop tool to manage `.env` files across projects — scan, edit, diff, snapshot, and toggle between local and remote URLs.
 
+[![Download app for macOS](docs/download-macos.svg)](https://github.com/yanirmanor/env-manager/releases/latest)
+
 ![screenshot](docs/screenshot.png)
 
 ## Features
